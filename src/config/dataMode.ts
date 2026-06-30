@@ -14,8 +14,9 @@
 
 export type DataMode = 'local' | 'supabase'
 
-export const DATA_MODE: DataMode =
-  (process.env.NEXT_PUBLIC_DATA_MODE as DataMode) || 'local'
+// Remove BOM (U+FEFF) que alguns editores inserem ao salvar variáveis de ambiente
+const _rawMode = process.env.NEXT_PUBLIC_DATA_MODE?.replace(/^﻿/, '').trim()
+export const DATA_MODE: DataMode = (_rawMode === 'supabase' ? 'supabase' : 'local')
 
 export const IS_LOCAL_MODE     = DATA_MODE === 'local'
 export const IS_SUPABASE_MODE  = DATA_MODE === 'supabase'
