@@ -15,8 +15,11 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// .replace remove BOM (U+FEFF) que a Vercel às vezes injeta no início da env var.
+// Sem isso, o supabase-js usa a key como header HTTP e o fetch falha com
+// "String contains non ISO-8859-1 code point" (headers só aceitam Latin-1).
+const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/^﻿/, '').trim()
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.replace(/^﻿/, '').trim()
 
 /**
  * Instância do cliente Supabase. Será `null` quando as variáveis não estiverem
