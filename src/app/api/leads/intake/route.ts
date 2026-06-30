@@ -24,6 +24,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { DATA_MODE } from '@/config/dataMode'
 
 export async function POST(request: NextRequest) {
   // Futuro: validar API key do remetente
@@ -47,14 +48,12 @@ export async function POST(request: NextRequest) {
   // Futuro: notificar corretor
   // await notificarCorretor(lead.id)
 
-  const dataMode = process.env.NEXT_PUBLIC_DATA_MODE || 'local'
-
-  if (dataMode === 'local') {
+  if (DATA_MODE === 'local') {
     return NextResponse.json(
       {
         status: 'pending',
         message: 'Endpoint preparado. Ative DATA_MODE=supabase para processar leads reais.',
-        dataMode,
+        dataMode: DATA_MODE,
       },
       { status: 202 }
     )
@@ -75,7 +74,7 @@ export async function GET() {
   return NextResponse.json({
     endpoint: 'POST /api/leads/intake',
     status: 'ready',
-    dataMode: process.env.NEXT_PUBLIC_DATA_MODE || 'local',
+    dataMode: DATA_MODE,
     supabaseConfigured: !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
   })
 }
