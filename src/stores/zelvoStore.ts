@@ -51,6 +51,15 @@ export interface AtualizacaoAtendimentoPayload {
   dataProximaAcao?: string
 }
 
+// ── Sessão de autenticação ─────────────────────────────────────────────────
+// Shape agnóstico de provider — compatível com mock e Supabase Auth
+
+export interface SessaoAuth {
+  userId:    string  // auth.users.id (UUID em supabase, id mockado em mock)
+  email:     string
+  expiresAt: number  // Unix timestamp (seconds). 0 = sem expiração (mock)
+}
+
 // ── Estado inicial ─────────────────────────────────────────────────────────
 
 export const ESTADO_INICIAL = {
@@ -60,6 +69,8 @@ export const ESTADO_INICIAL = {
   atividades:    [] as Atividade[],
   usuarios:      usuariosIniciais as Usuario[],
   usuarioAtual:  usuariosIniciais[0] as Usuario, // gerente por padrão
+  sessao:        null as SessaoAuth | null,
+  authLoading:   false,
 }
 
 // ── Interface da store ─────────────────────────────────────────────────────
@@ -72,8 +83,16 @@ export interface ZelvoStore {
   usuarios:      Usuario[]
   usuarioAtual:  Usuario
 
-  // Gestão de usuário
-  selecionarUsuario: (id: string) => void
+  // Auth state
+  sessao:      SessaoAuth | null
+  authLoading: boolean
+
+  // Gestão de usuário (mock: selecionarUsuario | supabase: setUsuarioAtual)
+  selecionarUsuario:  (id: string) => void
+  setUsuarioAtual:    (usuario: Usuario) => void
+  limparUsuarioAtual: () => void
+  setSessao:          (sessao: SessaoAuth | null) => void
+  setAuthLoading:     (loading: boolean) => void
   isGerente: () => boolean
   isCorretor: () => boolean
 
@@ -129,11 +148,22 @@ export const useZelvoStore = create<ZelvoStore>()(
     (set, get) => ({
       ...ESTADO_INICIAL,
 
-      // ── selecionarUsuario ───────────────────────────────────────────────
+      // ── Auth actions ────────────────────────────────────────────────────
+      // Mock mode: troca usuário pelo id na lista local
       selecionarUsuario: (id) => {
         const usuario = get().usuarios.find(u => u.id === id)
         if (usuario) set({ usuarioAtual: usuario })
       },
+      // Supabase mode: recebe Usuario já resolvido da tabela profiles
+      setUsuarioAtual: (usuario) => set({ usuarioAtual: usuario }),
+      // Limpa sessão (logout)
+      limparUsuarioAtual: () => set({
+        usuarioAtual: ESTADO_INICIAL.usuarioAtual,
+        sessao: null,
+      }),
+      setSessao:      (sessao)  => set({ sessao }),
+      setAuthLoading: (loading) => set({ authLoading: loading }),
+
       isGerente: () => get().usuarioAtual.perfil === 'gerente',
       isCorretor: () => get().usuarioAtual.perfil === 'corretor',
 

@@ -7,8 +7,9 @@ import { useState, useEffect } from 'react'
 import {
   Database, Users, GitBranch, Activity, User, Shield,
   CheckCircle2, XCircle, RotateCcw, AlertTriangle, RefreshCw,
-  Globe, Server, Layers,
+  Globe, Server, Layers, KeyRound,
 } from 'lucide-react'
+import { AUTH_MODE } from '@/config/authMode'
 
 function InfoRow({ label, value, mono = false }: { label: string; value: string | number; mono?: boolean }) {
   return (
@@ -34,12 +35,14 @@ function DiagCard({ title, icon: Icon, color, children }: { title: string; icon:
 }
 
 function DiagnosticoContent() {
-  const leads        = useZelvoStore(s => s.leads)
-  const corretores   = useZelvoStore(s => s.corretores)
+  const leads         = useZelvoStore(s => s.leads)
+  const corretores    = useZelvoStore(s => s.corretores)
   const distribuicoes = useZelvoStore(s => s.distribuicoes)
-  const atividades   = useZelvoStore(s => s.atividades)
-  const usuarioAtual = useZelvoStore(s => s.usuarioAtual)
-  const resetarDados = useZelvoStore(s => s.resetarDados)
+  const atividades    = useZelvoStore(s => s.atividades)
+  const usuarioAtual  = useZelvoStore(s => s.usuarioAtual)
+  const sessao        = useZelvoStore(s => s.sessao)
+  const authLoading   = useZelvoStore(s => s.authLoading)
+  const resetarDados  = useZelvoStore(s => s.resetarDados)
 
   const [localStorageAtivo, setLocalStorageAtivo] = useState<boolean | null>(null)
   const [storageSize,       setStorageSize]        = useState<string>('-')
@@ -48,6 +51,7 @@ function DiagnosticoContent() {
   const [resetado,    setResetado]    = useState(false)
 
   // Variáveis de ambiente — lidas no client (apenas NEXT_PUBLIC_*)
+  const authMode          = AUTH_MODE
   const dataMode          = process.env.NEXT_PUBLIC_DATA_MODE || 'local'
   const supabaseUrl       = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseConfigured = !!(supabaseUrl && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
@@ -115,7 +119,9 @@ function DiagnosticoContent() {
 
         <DiagCard title="Modo de dados" icon={Layers} color="#A78BFA">
           <InfoRow label="DATA_MODE"        value={dataMode} mono />
+          <InfoRow label="AUTH_MODE"        value={authMode} mono />
           <InfoRow label="Fonte de dados"   value={dataMode === 'local' ? 'Zustand + localStorage' : 'Supabase'} />
+          <InfoRow label="Autenticação"     value={authMode === 'mock' ? 'UserSwitcher (demo)' : 'Supabase Auth (real)'} />
           <InfoRow label="Supabase URL"     value={supabaseConfigured ? 'Configurado ✓' : 'Não configurado'} />
           <InfoRow label="ANON KEY"         value={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'Configurado ✓' : 'Não configurada'} />
           {supabaseUrl && (
@@ -126,7 +132,7 @@ function DiagnosticoContent() {
           )}
           <div className="mt-3 pt-2 border-t border-border/50">
             <p className="text-[10px] text-muted-foreground">
-              Para ativar Supabase: defina NEXT_PUBLIC_DATA_MODE=supabase e configure as variáveis no .env.local ou na Vercel.
+              Para ativar auth real: defina NEXT_PUBLIC_AUTH_MODE=supabase na Vercel e crie os usuários no painel do Supabase.
             </p>
           </div>
         </DiagCard>
@@ -163,16 +169,27 @@ function DiagnosticoContent() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Sessão */}
-        <DiagCard title="Sessão mockada" icon={User} color="#6E0933">
+        <DiagCard title="Autenticação" icon={KeyRound} color="#6E0933">
+          <InfoRow label="Modo"            value={authMode === 'mock' ? 'Mock (UserSwitcher)' : 'Supabase Auth'} />
           <InfoRow label="Usuário atual"   value={usuarioAtual.nome} />
           <InfoRow label="Perfil"          value={usuarioAtual.perfil} />
           <InfoRow label="Email"           value={usuarioAtual.email} />
           <InfoRow label="corretorId"      value={usuarioAtual.corretorId ?? '—'} mono />
           <InfoRow label="ID"              value={usuarioAtual.id} mono />
+          {authMode === 'supabase' && (
+            <>
+              <InfoRow label="Sessão ativa"    value={sessao ? 'Sim ✓' : authLoading ? 'Verificando…' : 'Não'} />
+              {sessao && (
+                <InfoRow label="User ID (auth)" value={sessao.userId.slice(0, 18) + '…'} mono />
+              )}
+            </>
+          )}
           <div className="mt-3 pt-2 border-t border-border/50">
             <p className="text-[10px] text-muted-foreground">
-              {/* Futuro: substituir por Supabase Auth — supabase.auth.getUser() */}
-              Futuro: sessão real via Supabase Auth + JWT com perfil no app_metadata.
+              {authMode === 'mock'
+                ? 'Modo demo: troque de perfil pelo UserSwitcher. Sem login real.'
+                : 'Auth real ativa. Login via /login, logout pelo botão no topo.'
+              }
             </p>
           </div>
         </DiagCard>
@@ -253,15 +270,17 @@ function DiagnosticoContent() {
         </p>
         <div className="space-y-2">
           {[
-            { file: 'src/services/authMockService.ts',    ponto: 'Autenticação real com Supabase Auth + JWT' },
-            { file: 'src/services/leadService.ts',        ponto: 'POST /api/leads/intake + RLS por corretorId' },
-            { file: 'src/services/corretorService.ts',    ponto: 'Métricas calculadas via Postgres functions' },
-            { file: 'src/services/distribuicaoService.ts', ponto: 'Distribuição via Edge Function server-side' },
-            { file: 'src/stores/zelvoStore.ts',           ponto: 'localStorage → Zustand com sync Supabase realtime' },
-            { file: 'src/lib/access.ts',                  ponto: 'podeAcessarLead → Row Level Security no banco' },
+            { file: 'src/services/authService.ts',        ponto: '✓ Implementado: login, logout, recuperação de senha via Supabase Auth', done: true },
+            { file: 'src/components/AuthProvider.tsx',    ponto: '✓ Implementado: listener de sessão, sync com zelvoStore, redirect para /login', done: true },
+            { file: 'src/app/login/page.tsx',             ponto: '✓ Implementado: tela de login com email + senha', done: true },
+            { file: 'src/services/leadService.ts',        ponto: 'Pendente: POST /api/leads/intake + RLS por corretorId', done: false },
+            { file: 'src/services/corretorService.ts',    ponto: 'Pendente: métricas calculadas via Postgres functions', done: false },
+            { file: 'src/services/distribuicaoService.ts', ponto: 'Pendente: distribuição via Edge Function server-side', done: false },
+            { file: 'src/stores/zelvoStore.ts',           ponto: 'Pendente: localStorage → sync Supabase realtime', done: false },
+            { file: 'src/lib/access.ts',                  ponto: 'Pendente: podeAcessarLead → Row Level Security no banco', done: false },
           ].map(s => (
             <div key={s.file} className="flex items-start gap-3 text-xs">
-              <code className="text-[10px] text-amber-400 font-mono shrink-0 mt-0.5">{s.file}</code>
+              <code className={`text-[10px] font-mono shrink-0 mt-0.5 ${s.done ? 'text-emerald-400' : 'text-amber-400'}`}>{s.file}</code>
               <span className="text-muted-foreground">{s.ponto}</span>
             </div>
           ))}
