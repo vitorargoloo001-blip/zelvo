@@ -1,12 +1,14 @@
 /**
  * corretorRepository.ts
  *
- * Abstração de acesso a dados para corretores.
- * Futuro: ativar implementação Supabase com DATA_MODE=supabase.
+ * Camada de query Prisma para corretores — chamada pelas API Routes
+ * (rota = fronteira HTTP + auth, repositório = query) quando DATA_MODE=cloud.
+ * Server-only: nunca importar de componentes client-side.
  */
 
-import { IS_LOCAL_MODE } from '@/config/dataMode'
-import { useZelvoStore } from '@/stores/zelvoStore'
+import 'server-only'
+import type { Corretor as CorretorRow } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 import type { Corretor } from '@/lib/types'
 
 export interface ICorretorRepository {
@@ -15,33 +17,36 @@ export interface ICorretorRepository {
   buscarPorId(id: string): Promise<Corretor | undefined>
 }
 
-const localCorretorRepository: ICorretorRepository = {
+export function toCorretor(row: CorretorRow): Corretor {
+  return {
+    id: row.id,
+    nome: row.nome,
+    telefone: row.telefone,
+    email: row.email,
+    nivel: row.nivel,
+    scoreCorretor: row.scoreCorretor,
+    leadsRecebidos: row.leadsRecebidos,
+    leadsEmAberto: row.leadsEmAberto,
+    visitasMarcadas: row.visitasMarcadas,
+    propostasEnviadas: row.propostasEnviadas,
+    vendasFechadas: row.vendasFechadas,
+    taxaConversao: row.taxaConversao,
+    tempoMedioAtendimento: row.tempoMedioAtendimento,
+    ativo: row.ativo,
+  }
+}
+
+export const corretorRepository: ICorretorRepository = {
   async listar() {
-    return useZelvoStore.getState().corretores
+    const rows = await prisma.corretor.findMany({ orderBy: { nome: 'asc' } })
+    return rows.map(toCorretor)
   },
   async listarAtivos() {
-    return useZelvoStore.getState().corretores.filter(c => c.ativo)
+    const rows = await prisma.corretor.findMany({ where: { ativo: true }, orderBy: { nome: 'asc' } })
+    return rows.map(toCorretor)
   },
   async buscarPorId(id) {
-    return useZelvoStore.getState().buscarCorretorPorId(id)
+    const row = await prisma.corretor.findUnique({ where: { id } })
+    return row ? toCorretor(row) : undefined
   },
 }
-
-const supabaseCorretorRepository: ICorretorRepository = {
-  async listar() {
-    // Futuro: supabase!.from('corretores').select('*')
-    throw new Error('Supabase não configurado.')
-  },
-  async listarAtivos() {
-    // Futuro: supabase!.from('corretores').select('*').eq('ativo', true)
-    throw new Error('Supabase não configurado.')
-  },
-  async buscarPorId(_id) {
-    // Futuro: supabase!.from('corretores').select('*').eq('id', id).single()
-    throw new Error('Supabase não configurado.')
-  },
-}
-
-export const corretorRepository: ICorretorRepository = IS_LOCAL_MODE
-  ? localCorretorRepository
-  : supabaseCorretorRepository

@@ -8,19 +8,20 @@
  * - Rotas autenticadas: sidebar (ZelvoMenu) + barra de usuário + AuthProvider
  *
  * A barra de usuário varia por modo:
- * - AUTH_MODE=mock     → <UserSwitcher /> (demo)
- * - AUTH_MODE=supabase → <LoggedInUserBar /> (auth real)
+ * - AUTH_MODE=mock  → <UserSwitcher /> (demo)
+ * - AUTH_MODE=cloud → <LoggedInUserBar /> (auth real)
  *
  * Usa usePathname() client-side para detectar a rota — o root layout é
  * Server Component e não pode fazer isso diretamente.
  */
 
 import { usePathname } from 'next/navigation'
-import { ZelvoMenu }       from '@/components/ZelvoMenu'
-import { UserSwitcher }    from '@/components/UserSwitcher'
-import { LoggedInUserBar } from '@/components/LoggedInUserBar'
-import { AuthProvider }    from '@/components/AuthProvider'
-import { IS_MOCK_AUTH }    from '@/config/authMode'
+import { ZelvoMenu }          from '@/components/ZelvoMenu'
+import { UserSwitcher }       from '@/components/UserSwitcher'
+import { LoggedInUserBar }    from '@/components/LoggedInUserBar'
+import { AuthProvider }       from '@/components/AuthProvider'
+import { CloudDataProvider }  from '@/components/CloudDataProvider'
+import { IS_MOCK_AUTH }       from '@/config/authMode'
 
 // Rotas que não exibem a sidebar nem a barra de usuário
 const ROTAS_PUBLICAS = ['/login', '/recuperar-senha', '/nova-senha']
@@ -36,8 +37,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      {/* Controlador de sessão — sem output visual */}
+      {/* Controladores sem output visual */}
       <AuthProvider />
+      <CloudDataProvider />
 
       {/* Sidebar fixa — expande ao hover, sobrepõe o conteúdo */}
       <ZelvoMenu />

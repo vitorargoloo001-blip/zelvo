@@ -47,9 +47,9 @@ export function AttendanceControl({ lead }: { lead: Lead }) {
   const temAlteracao = statusMudou || observacao !== (lead.observacao ?? '') ||
     proximaAcao !== (lead.proximaAcao ?? '') || dataProximaAcao !== (lead.dataProximaAcao ?? '')
 
-  function handleSave() {
+  async function handleSave() {
     if (!temAlteracao) return
-    adicionarAtualizacaoAtendimento({
+    await adicionarAtualizacaoAtendimento({
       leadId:          lead.id,
       statusAnterior:  lead.status as StatusLead,
       statusNovo,

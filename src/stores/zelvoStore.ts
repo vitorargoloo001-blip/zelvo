@@ -7,6 +7,8 @@ import { distribuicoes as distribuicoesIniciais } from '@/data/distribuicoes'
 import { usuarios as usuariosIniciais } from '@/data/usuarios'
 import { calcularLeadScore, definirTemperaturaLead } from '@/lib/score'
 import { distribuirLeadAutomaticamente } from '@/lib/distribution'
+import { atualizarMetricasCorretor } from '@/lib/corretorMetrics'
+import { IS_CLOUD_MODE } from '@/config/dataMode'
 import type {
   Lead, Corretor, Distribuicao, StatusLead, Usuario,
   FonteEntrada, TipoImovel, PrazoCompra, OrigemLead,
@@ -52,10 +54,9 @@ export interface AtualizacaoAtendimentoPayload {
 }
 
 // ── Sessão de autenticação ─────────────────────────────────────────────────
-// Shape agnóstico de provider — compatível com mock e Supabase Auth
 
 export interface SessaoAuth {
-  userId:    string  // auth.users.id (UUID em supabase, id mockado em mock)
+  userId:    string
   email:     string
   expiresAt: number  // Unix timestamp (seconds). 0 = sem expiração (mock)
 }
@@ -68,7 +69,7 @@ export const ESTADO_INICIAL = {
   distribuicoes: distribuicoesIniciais as Distribuicao[],
   atividades:    [] as Atividade[],
   usuarios:      usuariosIniciais as Usuario[],
-  usuarioAtual:  usuariosIniciais[0] as Usuario, // gerente por padrão
+  usuarioAtual:  usuariosIniciais[0] as Usuario,
   sessao:        null as SessaoAuth | null,
   authLoading:   false,
 }
@@ -83,11 +84,9 @@ export interface ZelvoStore {
   usuarios:      Usuario[]
   usuarioAtual:  Usuario
 
-  // Auth state
   sessao:      SessaoAuth | null
   authLoading: boolean
 
-  // Gestão de usuário (mock: selecionarUsuario | supabase: setUsuarioAtual)
   selecionarUsuario:  (id: string) => void
   setUsuarioAtual:    (usuario: Usuario) => void
   limparUsuarioAtual: () => void
@@ -96,49 +95,63 @@ export interface ZelvoStore {
   isGerente: () => boolean
   isCorretor: () => boolean
 
+  // Hidrata store com dados vindos do servidor (DATA_MODE=cloud)
+  hydrateFromServer: (data: {
+    leads: Lead[]
+    corretores: Corretor[]
+    distribuicoes: Distribuicao[]
+    atividades: Atividade[]
+  }) => void
+
   // Lead CRUD
-  adicionarLead:  (payload: CriarLeadPayload) => Lead
-  atualizarLead:  (id: string, dados: Partial<CriarLeadPayload>) => void
+  adicionarLead:  (payload: CriarLeadPayload) => Promise<Lead>
+  atualizarLead:  (id: string, dados: Partial<CriarLeadPayload>) => Promise<void>
 
   // Funil comercial
-  alterarStatusLead: (id: string, novoStatus: StatusLead) => void
-  adicionarAtualizacaoAtendimento: (payload: AtualizacaoAtendimentoPayload) => void
+  alterarStatusLead: (id: string, novoStatus: StatusLead) => Promise<void>
+  adicionarAtualizacaoAtendimento: (payload: AtualizacaoAtendimentoPayload) => Promise<void>
 
   // Distribuição
-  distribuirLead:   (id: string) => void
-  redistribuirLead: (id: string, corretorId: string) => void
+  distribuirLead:   (id: string) => Promise<void>
+  redistribuirLead: (id: string, corretorId: string) => Promise<void>
 
   // Atividades
-  adicionarAtividade: (payload: Omit<Atividade, 'id' | 'createdAt'>) => void
+  adicionarAtividade: (payload: Omit<Atividade, 'id' | 'createdAt'>) => Promise<void>
 
   // Seletores helper
   buscarLeadPorId:              (id: string) => Lead | undefined
   buscarCorretorPorId:          (id: string) => Corretor | undefined
   buscarDistribuicaoPorLeadId:  (leadId: string) => Distribuicao | undefined
 
-  // Reset
   resetarDados: () => void
 }
 
-// ── Helper: atualiza métricas do corretor ao mudar status ──────────────────
+// ── Helpers internos ───────────────────────────────────────────────────────
 
-function atualizarMetricasCorretor(
-  c: Corretor,
-  novoStatus: StatusLead,
-  statusAnterior: StatusLead
-): Corretor {
-  let updated = { ...c }
-  const abrindo  = !['Convertido', 'Perdido'].includes(statusAnterior) && !['Convertido', 'Perdido'].includes(novoStatus)
-  const fechando = novoStatus === 'Convertido' || novoStatus === 'Perdido'
-  const reabrindo = ['Convertido', 'Perdido'].includes(statusAnterior) && !['Convertido', 'Perdido'].includes(novoStatus)
+async function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  if (!res.ok) {
+    const msg = await res.json().catch(() => null)
+    throw new Error(msg?.erro ?? `Erro ${res.status} em ${path}`)
+  }
+  return res.json()
+}
 
-  void abrindo // não altera leadsEmAberto em movimentos internos do funil
-  if (fechando) updated.leadsEmAberto = Math.max(0, updated.leadsEmAberto - 1)
-  if (reabrindo) updated.leadsEmAberto = updated.leadsEmAberto + 1
-  if (novoStatus === 'Convertido')       updated.vendasFechadas    = updated.vendasFechadas + 1
-  if (novoStatus === 'Visita agendada')  updated.visitasMarcadas   = updated.visitasMarcadas + 1
-  if (novoStatus === 'Proposta enviada') updated.propostasEnviadas = updated.propostasEnviadas + 1
-  return updated
+async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const msg = await res.json().catch(() => null)
+    throw new Error(msg?.erro ?? `Erro ${res.status} em ${path}`)
+  }
+  return res.json()
 }
 
 // ── Criação da store ───────────────────────────────────────────────────────
@@ -149,29 +162,30 @@ export const useZelvoStore = create<ZelvoStore>()(
       ...ESTADO_INICIAL,
 
       // ── Auth actions ────────────────────────────────────────────────────
-      // Mock mode: troca usuário pelo id na lista local
       selecionarUsuario: (id) => {
         const usuario = get().usuarios.find(u => u.id === id)
         if (usuario) set({ usuarioAtual: usuario })
       },
-      // Supabase mode: recebe Usuario já resolvido da tabela profiles
       setUsuarioAtual: (usuario) => set({ usuarioAtual: usuario }),
-      // Limpa sessão (logout)
-      limparUsuarioAtual: () => set({
-        usuarioAtual: ESTADO_INICIAL.usuarioAtual,
-        sessao: null,
-      }),
+      limparUsuarioAtual: () => set({ usuarioAtual: ESTADO_INICIAL.usuarioAtual, sessao: null }),
       setSessao:      (sessao)  => set({ sessao }),
       setAuthLoading: (loading) => set({ authLoading: loading }),
 
       isGerente: () => get().usuarioAtual.perfil === 'gerente',
       isCorretor: () => get().usuarioAtual.perfil === 'corretor',
 
+      hydrateFromServer: (data) => set(data),
+
       // ── adicionarLead ───────────────────────────────────────────────────
-      adicionarLead: (payload) => {
+      adicionarLead: async (payload) => {
+        if (IS_CLOUD_MODE) {
+          const data = await apiPost<{ lead: Lead }>('/api/leads/intake', payload)
+          set(state => ({ leads: [...state.leads, data.lead] }))
+          return data.lead
+        }
+
         const agora = new Date().toISOString()
         const id    = `l_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-
         const camposScore = {
           nome: payload.nome, telefone: payload.telefone, cidade: payload.cidade,
           regiaoInteresse: payload.regiaoInteresse, tipoImovel: payload.tipoImovel,
@@ -182,42 +196,35 @@ export const useZelvoStore = create<ZelvoStore>()(
           origem: payload.origem, campanha: payload.campanha,
           fonteEntrada: payload.fonteEntrada,
         }
-
         const scoreLead      = calcularLeadScore(camposScore)
         const temperaturaLead = definirTemperaturaLead(scoreLead)
-
-        const lead: Lead = {
-          id, ...camposScore, scoreLead, temperaturaLead,
-          status: 'Novo', corretorAtribuido: null, createdAt: agora,
-        }
-
+        const lead: Lead = { id, ...camposScore, scoreLead, temperaturaLead, status: 'Novo', corretorAtribuido: null, createdAt: agora }
         const { corretores } = get()
         const { corretor, distribuicao: distParcial } = distribuirLeadAutomaticamente(lead, corretores)
-
         let distribuicao: Distribuicao | null = null
         if (corretor && distParcial) {
           lead.corretorAtribuido = corretor.id
           lead.status = 'Distribuído'
           distribuicao = { id: `d_${Date.now()}`, createdAt: agora, ...distParcial }
         }
-
         set(state => ({
           leads: [...state.leads, lead],
           distribuicoes: distribuicao ? [...state.distribuicoes, distribuicao] : state.distribuicoes,
           corretores: corretor
-            ? state.corretores.map(c =>
-                c.id === corretor.id
-                  ? { ...c, leadsEmAberto: c.leadsEmAberto + 1, leadsRecebidos: c.leadsRecebidos + 1 }
-                  : c
-              )
+            ? state.corretores.map(c => c.id === corretor.id ? { ...c, leadsEmAberto: c.leadsEmAberto + 1, leadsRecebidos: c.leadsRecebidos + 1 } : c)
             : state.corretores,
         }))
-
         return lead
       },
 
       // ── atualizarLead ───────────────────────────────────────────────────
-      atualizarLead: (id, dados) => {
+      atualizarLead: async (id, dados) => {
+        if (IS_CLOUD_MODE) {
+          const data = await apiPatch<{ lead: Lead }>(`/api/leads/${id}`, dados)
+          set(state => ({ leads: state.leads.map(l => l.id === id ? data.lead : l) }))
+          return
+        }
+
         set(state => ({
           leads: state.leads.map(l => {
             if (l.id !== id) return l
@@ -226,9 +233,8 @@ export const useZelvoStore = create<ZelvoStore>()(
               dados.possuiFgts !== undefined || dados.prazoCompra !== undefined ||
               dados.empreendimentoInteresse !== undefined || dados.regiaoInteresse !== undefined ||
               dados.financiamentoAprovado !== undefined
-
             if (recalcular) {
-              const scoreLead      = calcularLeadScore(updated as Parameters<typeof calcularLeadScore>[0])
+              const scoreLead       = calcularLeadScore(updated as Parameters<typeof calcularLeadScore>[0])
               const temperaturaLead = definirTemperaturaLead(scoreLead)
               return { ...updated, scoreLead, temperaturaLead }
             }
@@ -238,43 +244,31 @@ export const useZelvoStore = create<ZelvoStore>()(
       },
 
       // ── alterarStatusLead ───────────────────────────────────────────────
-      alterarStatusLead: (id, novoStatus) => {
+      alterarStatusLead: async (id, novoStatus) => {
+        if (IS_CLOUD_MODE) {
+          await apiPatch(`/api/leads/${id}/status`, { novoStatus })
+        }
         const agora = new Date().toISOString()
         const lead  = get().leads.find(l => l.id === id)
         if (!lead) return
-
         set(state => ({
           leads: state.leads.map(l => l.id === id ? { ...l, status: novoStatus } : l),
           corretores: lead.corretorAtribuido
-            ? state.corretores.map(c =>
-                c.id === lead.corretorAtribuido
-                  ? atualizarMetricasCorretor(c, novoStatus, lead.status)
-                  : c
-              )
+            ? state.corretores.map(c => c.id === lead.corretorAtribuido ? atualizarMetricasCorretor(c, novoStatus, lead.status) : c)
             : state.corretores,
-          atividades: [
-            ...state.atividades,
-            {
-              id: `a_${Date.now()}`,
-              leadId: id,
-              tipo: 'status' as const,
-              titulo: `Status: ${novoStatus}`,
-              descricao: `Lead movido de "${lead.status}" para "${novoStatus}".`,
-              createdAt: agora,
-            },
-          ],
+          atividades: [...state.atividades, { id: `a_${Date.now()}`, leadId: id, tipo: 'status' as const, titulo: `Status: ${novoStatus}`, descricao: `Lead movido de "${lead.status}" para "${novoStatus}".`, createdAt: agora }],
         }))
       },
 
       // ── adicionarAtualizacaoAtendimento ─────────────────────────────────
-      adicionarAtualizacaoAtendimento: (payload) => {
+      adicionarAtualizacaoAtendimento: async (payload) => {
+        if (IS_CLOUD_MODE) {
+          await apiPost(`/api/leads/${payload.leadId}/atendimento`, payload)
+        }
         const agora      = new Date().toISOString()
         const lead       = get().leads.find(l => l.id === payload.leadId)
         if (!lead) return
-
         const statusMudou = payload.statusNovo !== payload.statusAnterior
-
-        // Monta a descrição da atividade
         const partes: string[] = []
         if (statusMudou) partes.push(`Status alterado: "${payload.statusAnterior}" → "${payload.statusNovo}".`)
         if (payload.observacao) partes.push(`Obs: ${payload.observacao}`)
@@ -284,113 +278,78 @@ export const useZelvoStore = create<ZelvoStore>()(
             : ''
           partes.push(`Próxima ação: ${payload.proximaAcao}${data}`)
         }
-
         set(state => ({
           leads: state.leads.map(l => {
             if (l.id !== payload.leadId) return l
-            return {
-              ...l,
-              status: payload.statusNovo,
-              observacao:       payload.observacao       ?? l.observacao,
-              proximaAcao:      payload.proximaAcao      ?? l.proximaAcao,
-              dataProximaAcao:  payload.dataProximaAcao  ?? l.dataProximaAcao,
-            }
+            return { ...l, status: payload.statusNovo, observacao: payload.observacao ?? l.observacao, proximaAcao: payload.proximaAcao ?? l.proximaAcao, dataProximaAcao: payload.dataProximaAcao ?? l.dataProximaAcao }
           }),
           corretores: statusMudou && lead.corretorAtribuido
-            ? state.corretores.map(c =>
-                c.id === lead.corretorAtribuido
-                  ? atualizarMetricasCorretor(c, payload.statusNovo, payload.statusAnterior)
-                  : c
-              )
+            ? state.corretores.map(c => c.id === lead.corretorAtribuido ? atualizarMetricasCorretor(c, payload.statusNovo, payload.statusAnterior) : c)
             : state.corretores,
-          atividades: [
-            ...state.atividades,
-            {
-              id: `a_${Date.now()}`,
-              leadId: payload.leadId,
-              tipo: statusMudou ? 'status' as const : 'nota' as const,
-              titulo: statusMudou ? `Status: ${payload.statusNovo}` : 'Atendimento atualizado',
-              descricao: partes.join(' ') || 'Sem observações.',
-              createdAt: agora,
-            },
-          ],
+          atividades: [...state.atividades, { id: `a_${Date.now()}`, leadId: payload.leadId, tipo: statusMudou ? 'status' as const : 'nota' as const, titulo: statusMudou ? `Status: ${payload.statusNovo}` : 'Atendimento atualizado', descricao: partes.join(' ') || 'Sem observações.', createdAt: agora }],
         }))
       },
 
       // ── distribuirLead ──────────────────────────────────────────────────
-      distribuirLead: (id) => {
+      distribuirLead: async (id) => {
+        if (IS_CLOUD_MODE) {
+          const data = await apiPost<{ ok: boolean; lead: Lead | null }>(`/api/leads/${id}/distribuir`)
+          if (data.lead) {
+            set(state => ({ leads: state.leads.map(l => l.id === id ? data.lead! : l) }))
+          }
+          return
+        }
         const agora = new Date().toISOString()
         const { leads, corretores } = get()
         const lead = leads.find(l => l.id === id)
         if (!lead) return
-
         const { corretor, distribuicao: distParcial } = distribuirLeadAutomaticamente(lead, corretores)
         if (!corretor || !distParcial) return
-
         const distribuicao: Distribuicao = { id: `d_${Date.now()}`, createdAt: agora, ...distParcial }
-
         set(state => ({
-          leads: state.leads.map(l =>
-            l.id === id ? { ...l, corretorAtribuido: corretor.id, status: 'Distribuído' } : l
-          ),
+          leads: state.leads.map(l => l.id === id ? { ...l, corretorAtribuido: corretor.id, status: 'Distribuído' } : l),
           distribuicoes: [...state.distribuicoes, distribuicao],
-          corretores: state.corretores.map(c =>
-            c.id === corretor.id
-              ? { ...c, leadsEmAberto: c.leadsEmAberto + 1, leadsRecebidos: c.leadsRecebidos + 1 }
-              : c
-          ),
+          corretores: state.corretores.map(c => c.id === corretor.id ? { ...c, leadsEmAberto: c.leadsEmAberto + 1, leadsRecebidos: c.leadsRecebidos + 1 } : c),
         }))
       },
 
       // ── redistribuirLead ────────────────────────────────────────────────
-      redistribuirLead: (id, corretorId) => {
+      redistribuirLead: async (id, corretorId) => {
+        if (IS_CLOUD_MODE) {
+          const data = await apiPost<{ ok: boolean; lead: Lead | null }>(`/api/leads/${id}/redistribuir`, { corretorId })
+          if (data.lead) {
+            set(state => ({ leads: state.leads.map(l => l.id === id ? data.lead! : l) }))
+          }
+          return
+        }
         const agora = new Date().toISOString()
         const { leads, corretores } = get()
         const lead         = leads.find(l => l.id === id)
         const novoCorretor = corretores.find(c => c.id === corretorId)
         if (!lead || !novoCorretor) return
-
-        const motivo =
-          `Redistribuição manual — Lead ${lead.temperaturaLead} reatribuído para ${novoCorretor.nome} ` +
-          `(Nível ${novoCorretor.nivel}, score ${novoCorretor.scoreCorretor}).`
-
-        const distribuicao: Distribuicao = {
-          id: `d_${Date.now()}`, leadId: id, corretorId,
-          scoreLeadNoMomento: lead.scoreLead, scoreCorretorNoMomento: novoCorretor.scoreCorretor,
-          motivoDistribuicao: motivo, createdAt: agora,
-        }
-
+        const motivo = `Redistribuição manual — Lead ${lead.temperaturaLead} reatribuído para ${novoCorretor.nome} (Nível ${novoCorretor.nivel}, score ${novoCorretor.scoreCorretor}).`
+        const distribuicao: Distribuicao = { id: `d_${Date.now()}`, leadId: id, corretorId, scoreLeadNoMomento: lead.scoreLead, scoreCorretorNoMomento: novoCorretor.scoreCorretor, motivoDistribuicao: motivo, createdAt: agora }
         set(state => ({
-          leads: state.leads.map(l =>
-            l.id === id ? { ...l, corretorAtribuido: corretorId, status: 'Distribuído' } : l
-          ),
+          leads: state.leads.map(l => l.id === id ? { ...l, corretorAtribuido: corretorId, status: 'Distribuído' } : l),
           distribuicoes: [...state.distribuicoes, distribuicao],
           corretores: state.corretores.map(c => {
-            if (c.id === corretorId)
-              return { ...c, leadsEmAberto: c.leadsEmAberto + 1, leadsRecebidos: c.leadsRecebidos + 1 }
-            if (c.id === lead.corretorAtribuido)
-              return { ...c, leadsEmAberto: Math.max(0, c.leadsEmAberto - 1) }
+            if (c.id === corretorId) return { ...c, leadsEmAberto: c.leadsEmAberto + 1, leadsRecebidos: c.leadsRecebidos + 1 }
+            if (c.id === lead.corretorAtribuido) return { ...c, leadsEmAberto: Math.max(0, c.leadsEmAberto - 1) }
             return c
           }),
-          atividades: [
-            ...state.atividades,
-            {
-              id: `a_${Date.now()}`, leadId: id,
-              tipo: 'redistribuicao' as const,
-              titulo: `Redistribuído para ${novoCorretor.nome}`,
-              descricao: motivo, createdAt: agora,
-            },
-          ],
+          atividades: [...state.atividades, { id: `a_${Date.now()}`, leadId: id, tipo: 'redistribuicao' as const, titulo: `Redistribuído para ${novoCorretor.nome}`, descricao: motivo, createdAt: agora }],
         }))
       },
 
       // ── adicionarAtividade ──────────────────────────────────────────────
-      adicionarAtividade: (payload) => {
+      adicionarAtividade: async (payload) => {
+        if (IS_CLOUD_MODE) {
+          const data = await apiPost<{ atividade: Atividade }>('/api/atividades', payload)
+          set(state => ({ atividades: [...state.atividades, data.atividade] }))
+          return
+        }
         set(state => ({
-          atividades: [
-            ...state.atividades,
-            { ...payload, id: `a_${Date.now()}`, createdAt: new Date().toISOString() },
-          ],
+          atividades: [...state.atividades, { ...payload, id: `a_${Date.now()}`, createdAt: new Date().toISOString() }],
         }))
       },
 
@@ -402,7 +361,6 @@ export const useZelvoStore = create<ZelvoStore>()(
         return lista[lista.length - 1]
       },
 
-      // ── resetarDados ────────────────────────────────────────────────────
       resetarDados: () => set({ ...ESTADO_INICIAL }),
     }),
     {

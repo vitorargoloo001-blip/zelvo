@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7 removeu url/directUrl do bloco datasource — a URL de migração
+// (CLI) vem de prisma.config.ts; a URL pooled de runtime é passada via
+// `datasourceUrl` no construtor do PrismaClient em src/lib/prisma.ts.
+datasource db {
+  provider = "postgresql"
+}
+
+// Enums com identificadores ASCII puros — seguros como enum real do Postgres.
+// StatusLead/TipoImovel/PrazoCompra/OrigemLead/FonteEntrada/TemperaturaLead usam
+// String simples (validados pelo union type em src/lib/types.ts) porque seus valores
+// têm acentos/espaços, e o @map de enum do Prisma só afeta a coluna no banco — o valor
+// usado pelo Prisma Client continua sendo o identificador do schema, não o valor mapeado.
+enum PerfilUsuario {
+  gerente
+  corretor
+}
+
+enum NivelCorretor {
+  A
+  B
+  C
+  D
+}
+
+enum TipoAtividade {
+  status
+  redistribuicao
+  nota
+}
+
+model Usuario {
+  id         String        @id @default(cuid())
+  nome       String
+  email      String        @unique
+  senhaHash  String
+  perfil     PerfilUsuario @default(corretor)
+  corretorId String?
+  corretor   Corretor?     @relation(fields: [corretorId], references: [id])
+  ativo      Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  resetTokens  PasswordResetToken[]
+  notificacoes Notificacao[]
+
+  @@index([corretorId])
+}
+
+model Corretor {
+  id                    String        @id @default(cuid())
+  nome                  String
+  telefone              String
+  email                 String        @unique
+  nivel                 NivelCorretor @default(C)
+  scoreCorretor         Int           @default(0)
+  leadsRecebidos        Int           @default(0)
+  leadsEmAberto         Int           @default(0)
+  visitasMarcadas       Int           @default(0)
+  propostasEnviadas     Int           @default(0)
+  vendasFechadas        Int           @default(0)
+  taxaConversao         Float         @default(0)
+  tempoMedioAtendimento Int           @default(0)
+  ativo                 Boolean       @default(true)
+  createdAt             DateTime      @default(now())
+
+  usuarios      Usuario[]
+  leads         Lead[]
+  distribuicoes Distribuicao[]
+  notificacoes  Notificacao[]
+}
+
+model Lead {
+  id                      String    @id @default(cuid())
+  nome                    String
+  telefone                String
+  cidade                  String
+  regiaoInteresse         String
+  tipoImovel              String    // TipoImovel: 'Apartamento'|'Casa'|'Terreno'|'Comercial'|'Rural'
+  rendaFamiliar           Float
+  valorEntrada            Float
+  possuiFgts              Boolean   @default(false)
+  prazoCompra             String    // PrazoCompra: 'até 30 dias'|'1 a 3 meses'|'3 a 6 meses'|'acima de 6 meses'|'sem previsão'
+  financiamentoAprovado   Boolean   @default(false)
+  empreendimentoInteresse String    @default("")
+  origem                  String    // OrigemLead: 'Meta Ads'|'Google Ads'|'WhatsApp'|'Landing Page'|'Indicação'|'Portal Imobiliário'
+  campanha                String    @default("")
+  scoreLead               Int       @default(0)
+  temperaturaLead         String    @default("Frio") // TemperaturaLead: 'Premium'|'Quente'|'Morno'|'Frio'
+  status                  String    @default("Novo")  // StatusLead (9 valores, ver src/lib/types.ts)
+  corretorAtribuido       String?
+  corretor                Corretor? @relation(fields: [corretorAtribuido], references: [id])
+  fonteEntrada            String    @default("manual") // FonteEntrada: 'manual'|'formulario_externo'|'importacao'
+
+  observacao      String?
+  proximaAcao     String?
+  dataProximaAcao DateTime? @db.Date
+
+  formularioOrigem    String?
+  utmSource           String?
+  utmMedium           String?
+  utmCampaign         String?
+  utmContent          String?
+  utmTerm             String?
+  ipOrigem            String?
+  dispositivo         String?
+  dataEnvioFormulario DateTime?
+
+  createdAt DateTime @default(now())
+
+  distribuicoes Distribuicao[]
+  atividades    Atividade[]
+  notificacoes  Notificacao[]
+
+  @@index([corretorAtribuido])
+  @@index([status])
+  @@index([temperaturaLead])
+  @@index([createdAt(sort: Desc)])
+}
+
+model Distribuicao {
+  id                     String   @id @default(cuid())
+  leadId                 String
+  lead                   Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  corretorId             String
+  corretor               Corretor @relation(fields: [corretorId], references: [id], onDelete: Cascade)
+  scoreLeadNoMomento     Int      @default(0)
+  scoreCorretorNoMomento Int      @default(0)
+  motivoDistribuicao     String   @default("")
+  createdAt              DateTime @default(now())
+
+  @@index([leadId])
+  @@index([corretorId])
+}
+
+model Atividade {
+  id        String        @id @default(cuid())
+  leadId    String
+  lead      Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tipo      TipoAtividade @default(nota)
+  titulo    String
+  descricao String        @default("")
+  createdAt DateTime      @default(now())
+
+  @@index([leadId])
+  @@index([createdAt(sort: Desc)])
+}
+
+model Notificacao {
+  id         String    @id @default(cuid())
+  usuarioId  String
+  usuario    Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  leadId     String?
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  corretorId String?
+  corretor   Corretor? @relation(fields: [corretorId], references: [id], onDelete: SetNull)
+  tipo       String    // TipoNotificacao: ver src/services/notificationService.ts
+  titulo     String
+  mensagem   String    @default("")
+  lida       Boolean   @default(false)
+  prioridade String    @default("media") // baixa | media | alta | critica
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([usuarioId])
+  @@index([usuarioId, lida])
+  @@index([leadId])
+  @@index([tipo])
+  @@index([createdAt(sort: Desc)])
+}
+
+model EmailLog {
+  id           String   @id @default(cuid())
+  usuarioId    String?
+  leadId       String?
+  destinatario String
+  assunto      String
+  status       String   @default("pendente") // pendente | enviado | erro
+  provider     String   @default("resend")
+  erro         String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([status])
+  @@index([leadId])
+  @@index([createdAt(sort: Desc)])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  usuarioId String
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([usuarioId])
+}

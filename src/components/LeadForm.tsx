@@ -48,32 +48,29 @@ export function LeadForm() {
     setPreview({ score, temperatura: definirTemperaturaLead(score) })
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const renda  = parseFloat(form.rendaFamiliar) || 0
     const entrada = parseFloat(form.valorEntrada) || 0
 
-    // Cria o lead na store: calcula score, distribui, persiste tudo
-    const lead = adicionarLead({
+    const lead = await adicionarLead({
       ...form,
       rendaFamiliar: renda,
       valorEntrada:  entrada,
     })
 
-    // Busca o corretor atribuído para exibir no feedback
     const corretores = useZelvoStore.getState().corretores
     const corretor   = lead.corretorAtribuido
       ? corretores.find(c => c.id === lead.corretorAtribuido)?.nome ?? null
       : null
 
     setSucesso({
-      nome:       lead.nome,
-      score:      lead.scoreLead,
+      nome:        lead.nome,
+      score:       lead.scoreLead,
       temperatura: lead.temperaturaLead,
       corretor,
     })
 
-    // Redireciona para a tela de detalhe do lead criado
     setTimeout(() => router.push(`/leads/${lead.id}`), 1200)
   }
 

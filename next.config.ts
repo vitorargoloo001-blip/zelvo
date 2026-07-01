@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Next.js roda nativamente na Vercel — nenhuma configuração extra necessária.
+  serverExternalPackages: ['pg', '@prisma/client', '@prisma/adapter-pg'],
 };
 
 export default nextConfig;

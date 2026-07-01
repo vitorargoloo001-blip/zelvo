@@ -16,7 +16,8 @@ const TAB_HREF: Record<string, string> = {
   Ranking: '/ranking',
   Distribuições: '/distribuicoes',
   Configurações: '/configuracoes',
-  Diagnóstico: '/diagnostico',
+  Diagnóstico:   '/diagnostico',
+  Notificações:  '/notificacoes',
   // Corretor
   'Meu Painel': '/meu-painel',
   'Meus Leads': '/meus-leads',

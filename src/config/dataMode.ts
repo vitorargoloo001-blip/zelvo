@@ -3,20 +3,21 @@
  *
  * Controla qual fonte de dados o Zelvo usa em runtime.
  *
- * Para ativar Supabase:
- *   1. Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no .env.local
- *   2. Altere NEXT_PUBLIC_DATA_MODE=supabase no .env.local (ou na Vercel)
- *   3. Rode as migrations em supabase/schema.sql no painel do Supabase
+ * Para ativar o modo cloud:
+ *   1. Provisione um banco Vercel Postgres (Storage → Postgres) — injeta
+ *      POSTGRES_PRISMA_URL e POSTGRES_URL_NON_POOLING automaticamente
+ *   2. Altere NEXT_PUBLIC_DATA_MODE=cloud no .env.local (ou na Vercel)
+ *   3. Rode `npx prisma migrate deploy` e `npx prisma db seed`
  *
- * Futuro: quando DATA_MODE='supabase', os repositories chamarão o Supabase
+ * Quando DATA_MODE='cloud', os repositories chamam o Postgres via Prisma
  *   em vez da zelvoStore local.
  */
 
-export type DataMode = 'local' | 'supabase'
+export type DataMode = 'local' | 'cloud'
 
 // Remove BOM (U+FEFF) que o Vercel pode inserir ao salvar variáveis de ambiente
 const _rawMode = process.env.NEXT_PUBLIC_DATA_MODE?.replace(/^﻿/, '').trim()
-export const DATA_MODE: DataMode = (_rawMode === 'supabase' ? 'supabase' : 'local')
+export const DATA_MODE: DataMode = (_rawMode === 'cloud' ? 'cloud' : 'local')
 
-export const IS_LOCAL_MODE    = DATA_MODE === 'local'
-export const IS_SUPABASE_MODE = DATA_MODE === 'supabase'
+export const IS_LOCAL_MODE = DATA_MODE === 'local'
+export const IS_CLOUD_MODE = DATA_MODE === 'cloud'

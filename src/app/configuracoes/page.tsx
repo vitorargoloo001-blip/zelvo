@@ -6,6 +6,20 @@ import { PageHeader } from '@/components/PageHeader'
 import { AccessGuard } from '@/components/AccessGuard'
 import { RotateCcw, AlertTriangle, CheckCircle2 } from 'lucide-react'
 
+function Toggle({ checked }: { checked: boolean }) {
+  return (
+    <div
+      className="relative w-9 h-5 rounded-full transition-colors"
+      style={{ background: checked ? '#6E0933' : 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)' }}
+    >
+      <div
+        className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+        style={{ transform: checked ? 'translateX(17px)' : 'translateX(2px)' }}
+      />
+    </div>
+  )
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-border p-5 mb-4" style={{ background: 'var(--card)' }}>
@@ -80,6 +94,45 @@ function ConfiguracoesContent() {
         <Row label="Nível B" control={<span className="text-xs font-semibold text-blue-400">65 – 84</span>} />
         <Row label="Nível C" control={<span className="text-xs font-semibold text-amber-400">40 – 64</span>} />
         <Row label="Nível D" control={<span className="text-xs font-semibold text-red-400">0 – 39</span>} />
+      </Section>
+
+      <Section title="Notificações">
+        <Row
+          label="Notificações internas"
+          description="Avisar corretor ao receber lead atribuído ou redistribuído"
+          control={<Toggle checked={true} />}
+        />
+        <Row
+          label="E-mail ao receber lead"
+          description="Enviar e-mail quando um lead é atribuído ao corretor"
+          control={<Toggle checked={true} />}
+        />
+        <Row
+          label="E-mail Lead Premium"
+          description="Alerta prioritário por e-mail para leads Premium"
+          control={<Toggle checked={true} />}
+        />
+        <Row
+          label="Alerta Premium parado"
+          description="Notificar gerente se lead Premium ficar sem contato"
+          control={<input readOnly className={inputCls} defaultValue="10 minutos" />}
+        />
+        <Row
+          label="Alerta corretor sobrecarregado"
+          description="Limite de leads em aberto antes do alerta gerencial"
+          control={<input readOnly className={inputCls} defaultValue="15 leads" />}
+        />
+        <Row
+          label="Alerta sem próxima ação"
+          description="Lead ativo sem próxima ação definida após esse tempo"
+          control={<input readOnly className={inputCls} defaultValue="48 horas" />}
+        />
+        <div className="pt-2">
+          <p className="text-[10px] text-muted-foreground">
+            Na Versão 2, estas configurações poderão ser ajustadas individualmente por perfil.
+            Requer RESEND_API_KEY configurado na Vercel para envio de e-mails.
+          </p>
+        </div>
       </Section>
 
       {/* ── Reset do MVP ── */}

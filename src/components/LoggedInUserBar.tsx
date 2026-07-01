@@ -3,18 +3,18 @@
 /**
  * LoggedInUserBar.tsx
  *
- * Barra superior mostrada quando AUTH_MODE=supabase.
- * Exibe nome do usuário, badge de perfil e botão de logout.
- * Substitui visualmente o UserSwitcher no modo de autenticação real.
+ * Barra superior mostrada quando AUTH_MODE=cloud.
+ * Exibe notificationBell, nome do usuário, badge de perfil e botão de logout.
  */
 
 import { useState } from 'react'
 import { useZelvoStore } from '@/stores/zelvoStore'
 import { fazerLogout } from '@/components/AuthProvider'
 import { Shield, User, LogOut, Loader2 } from 'lucide-react'
+import { NotificationBell } from '@/components/NotificationBell'
 
 export function LoggedInUserBar() {
-  const usuarioAtual      = useZelvoStore(s => s.usuarioAtual)
+  const usuarioAtual       = useZelvoStore(s => s.usuarioAtual)
   const limparUsuarioAtual = useZelvoStore(s => s.limparUsuarioAtual)
   const authLoading        = useZelvoStore(s => s.authLoading)
 
@@ -52,6 +52,9 @@ export function LoggedInUserBar() {
         borderColor: 'rgba(255,255,255,0.06)',
       }}
     >
+      {/* Sino de notificações */}
+      <NotificationBell />
+
       {/* Usuário logado */}
       <div
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg border"

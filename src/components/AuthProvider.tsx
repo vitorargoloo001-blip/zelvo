@@ -5,18 +5,19 @@
  *
  * Componente raiz de autenticação. Renderizado no layout principal.
  *
- * AUTH_MODE=mock     → no-op: UserSwitcher já controla tudo
- * AUTH_MODE=supabase → escuta mudanças de sessão Supabase, carrega perfil da tabela
- *                      profiles, atualiza zelvoStore, redireciona para /login se
- *                      não houver sessão em rotas protegidas.
+ * AUTH_MODE=mock  → no-op: UserSwitcher já controla tudo
+ * AUTH_MODE=cloud → carrega a sessão Auth.js atual, popula zelvoStore,
+ *                   redireciona para /login se não houver sessão em rotas
+ *                   protegidas (o proxy.ts já faz o mesmo a cada navegação;
+ *                   isto cobre o caso de a sessão expirar com a SPA já
+ *                   carregada).
  *
  * Não renderiza nada visualmente — é um controlador de estado puro.
  */
 
 import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { IS_SUPABASE_AUTH } from '@/config/authMode'
-import { supabase } from '@/lib/supabaseClient'
+import { IS_CLOUD_AUTH } from '@/config/authMode'
 import { useZelvoStore } from '@/stores/zelvoStore'
 import { obterUsuarioAtualComPerfil, logout } from '@/services/authService'
 
@@ -34,11 +35,10 @@ export function AuthProvider() {
 
   useEffect(() => {
     // Em modo mock o UserSwitcher já cuida de tudo
-    if (!IS_SUPABASE_AUTH || !supabase) return
+    if (!IS_CLOUD_AUTH) return
 
     setAuthLoading(true)
 
-    // Carrega sessão inicial
     obterUsuarioAtualComPerfil().then(resultado => {
       if (resultado) {
         setUsuarioAtual(resultado.usuario)
@@ -52,29 +52,6 @@ export function AuthProvider() {
       }
       setAuthLoading(false)
     })
-
-    // Escuta mudanças de sessão em tempo real (login, logout, refresh de token)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_OUT' || !session) {
-          limparUsuarioAtual()
-          if (!ROTAS_PUBLICAS.some(r => pathname.startsWith(r))) {
-            router.replace('/login')
-          }
-          return
-        }
-
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          const resultado = await obterUsuarioAtualComPerfil()
-          if (resultado) {
-            setUsuarioAtual(resultado.usuario)
-            setSessao(resultado.sessao)
-          }
-        }
-      }
-    )
-
-    return () => subscription.unsubscribe()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -83,7 +60,7 @@ export function AuthProvider() {
 
 /**
  * Expõe função de logout para uso em componentes (LoggedInUserBar, etc.)
- * Limpa store + chama supabase.auth.signOut.
+ * Limpa store + encerra a sessão Auth.js.
  */
 export async function fazerLogout(
   limparStore: () => void,

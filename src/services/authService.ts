@@ -2,119 +2,93 @@
  * authService.ts
  *
  * Serviço de autenticação do Zelvo.
- * - AUTH_MODE=mock  → funções são no-op / retornam dados do UserSwitcher
- * - AUTH_MODE=supabase → usa Supabase Auth real
+ * - AUTH_MODE=mock  → funções são no-op / não chamadas (UserSwitcher cuida de tudo)
+ * - AUTH_MODE=cloud → usa Auth.js (NextAuth) real via next-auth/react
  *
  * Todas as funções são seguras de chamar em qualquer modo.
  */
 
-import { supabase } from '@/lib/supabaseClient'
+import { signIn, signOut, getSession } from 'next-auth/react'
+import type { Session } from 'next-auth'
 import { rotaInicialdoPerfil } from '@/lib/access'
-import type { Usuario, PerfilUsuario } from '@/lib/types'
+import type { Usuario } from '@/lib/types'
 import type { SessaoAuth } from '@/stores/zelvoStore'
-
-// ── Shape do profile vindo do Supabase ────────────────────────────────────
-
-interface ProfileRow {
-  id:          string
-  nome:        string
-  email:       string
-  perfil:      string
-  corretor_id: string | null
-  ativo:       boolean
-}
 
 // ── Helpers internos ──────────────────────────────────────────────────────
 
-function profileToUsuario(p: ProfileRow): Usuario {
+function sessionToUsuario(session: Session): Usuario | null {
+  if (!session.user?.id) return null
   return {
-    id:         p.id,
-    nome:       p.nome,
-    email:      p.email,
-    perfil:     p.perfil as PerfilUsuario,
-    corretorId: p.corretor_id ?? undefined,
+    id: session.user.id,
+    nome: session.user.name ?? '',
+    email: session.user.email ?? '',
+    perfil: session.user.perfil,
+    corretorId: session.user.corretorId ?? undefined,
+  }
+}
+
+function sessionToSessao(session: Session): SessaoAuth {
+  return {
+    userId: session.user?.id ?? '',
+    email: session.user?.email ?? '',
+    expiresAt: session.expires ? Math.floor(new Date(session.expires).getTime() / 1000) : 0,
   }
 }
 
 // ── Funções públicas ──────────────────────────────────────────────────────
 
 /**
- * Realiza login com email e senha via Supabase Auth.
+ * Realiza login com email e senha via Auth.js (Credentials Provider).
  * Retorna o usuário com perfil ou um erro tratado.
  */
 export async function loginComEmailSenha(
   email: string,
   senha: string
 ): Promise<{ usuario: Usuario; sessao: SessaoAuth } | { erro: string }> {
-  if (!supabase) return { erro: 'Supabase não configurado. Configure as variáveis de ambiente.' }
+  const resultado = await signIn('credentials', { email, senha, redirect: false })
 
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password: senha })
-  if (error || !data.session) {
-    if (error?.message?.includes('Invalid login credentials'))
-      return { erro: 'Email ou senha incorretos.' }
-    if (error?.message?.includes('Email not confirmed'))
-      return { erro: 'Confirme seu email antes de entrar.' }
-    return { erro: error?.message ?? 'Erro ao fazer login. Tente novamente.' }
+  if (!resultado || resultado.error) {
+    return { erro: 'Email ou senha incorretos.' }
   }
 
-  const perfil = await buscarPerfilPorAuthId(data.session.user.id)
-  if (!perfil) return { erro: 'Usuário sem perfil configurado. Fale com o administrador.' }
+  const session = await getSession()
+  if (!session) return { erro: 'Não foi possível carregar a sessão. Tente novamente.' }
 
-  const sessao: SessaoAuth = {
-    userId:    data.session.user.id,
-    email:     data.session.user.email ?? email,
-    expiresAt: data.session.expires_at ?? 0,
-  }
+  const usuario = sessionToUsuario(session)
+  if (!usuario) return { erro: 'Usuário sem perfil configurado. Fale com o administrador.' }
 
-  return { usuario: profileToUsuario(perfil), sessao }
+  return { usuario, sessao: sessionToSessao(session) }
 }
 
 /**
- * Encerra a sessão do usuário atual no Supabase.
+ * Encerra a sessão do usuário atual.
  */
 export async function logout(): Promise<void> {
-  if (!supabase) return
-  await supabase.auth.signOut()
+  await signOut({ redirect: false })
 }
 
 /**
- * Retorna a sessão ativa do Supabase, ou null.
+ * Retorna a sessão ativa do Auth.js, ou null.
  */
 export async function obterSessaoAtual(): Promise<SessaoAuth | null> {
-  if (!supabase) return null
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return null
-  return {
-    userId:    session.user.id,
-    email:     session.user.email ?? '',
-    expiresAt: session.expires_at ?? 0,
-  }
+  const session = await getSession()
+  return session ? sessionToSessao(session) : null
 }
 
 /**
  * Retorna o Usuario atual (perfil + sessão) a partir da sessão ativa.
- * Consulta a tabela profiles para obter perfil e corretor_id.
  */
 export async function obterUsuarioAtualComPerfil(): Promise<{
   usuario: Usuario
   sessao: SessaoAuth
 } | null> {
-  if (!supabase) return null
-
-  const { data: { session } } = await supabase.auth.getSession()
+  const session = await getSession()
   if (!session) return null
 
-  const perfil = await buscarPerfilPorAuthId(session.user.id)
-  if (!perfil) return null
+  const usuario = sessionToUsuario(session)
+  if (!usuario) return null
 
-  return {
-    usuario: profileToUsuario(perfil),
-    sessao: {
-      userId:    session.user.id,
-      email:     session.user.email ?? '',
-      expiresAt: session.expires_at ?? 0,
-    },
-  }
+  return { usuario, sessao: sessionToSessao(session) }
 }
 
 /**
@@ -125,33 +99,26 @@ export function redirecionarPorPerfil(usuario: Usuario): string {
 }
 
 /**
- * Envia email de recuperação de senha via Supabase Auth.
+ * Envia email de recuperação de senha via rota própria (PasswordResetToken + Resend).
  */
 export async function enviarEmailRecuperacao(
   email: string,
   redirectTo?: string
 ): Promise<{ sucesso: boolean; erro?: string }> {
-  if (!supabase) return { sucesso: false, erro: 'Supabase não configurado.' }
+  try {
+    const resposta = await fetch('/api/auth/recuperar-senha', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, redirectTo }),
+    })
 
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: redirectTo ?? `${window.location.origin}/nova-senha`,
-  })
+    if (!resposta.ok) {
+      const corpo = await resposta.json().catch(() => null)
+      return { sucesso: false, erro: corpo?.erro ?? 'Erro ao enviar email. Tente novamente.' }
+    }
 
-  if (error) return { sucesso: false, erro: error.message }
-  return { sucesso: true }
-}
-
-// ── Funções internas ──────────────────────────────────────────────────────
-
-async function buscarPerfilPorAuthId(authUserId: string): Promise<ProfileRow | null> {
-  if (!supabase) return null
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, nome, email, perfil, corretor_id, ativo')
-    .eq('id', authUserId)
-    .eq('ativo', true)
-    .single()
-
-  if (error || !data) return null
-  return data as ProfileRow
+    return { sucesso: true }
+  } catch {
+    return { sucesso: false, erro: 'Erro ao enviar email. Tente novamente.' }
+  }
 }

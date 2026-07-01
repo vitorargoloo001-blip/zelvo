@@ -1,12 +1,13 @@
 /**
  * distribuicaoRepository.ts
  *
- * Abstração de acesso a dados para distribuições.
- * Futuro: ativar implementação Supabase com DATA_MODE=supabase.
+ * Camada de query Prisma para distribuições — chamada pelas API Routes
+ * quando DATA_MODE=cloud. Server-only.
  */
 
-import { IS_LOCAL_MODE } from '@/config/dataMode'
-import { useZelvoStore } from '@/stores/zelvoStore'
+import 'server-only'
+import type { Distribuicao as DistribuicaoRow } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 import type { Distribuicao } from '@/lib/types'
 
 export interface IDistribuicaoRepository {
@@ -14,26 +15,28 @@ export interface IDistribuicaoRepository {
   buscarPorLeadId(leadId: string): Promise<Distribuicao | undefined>
 }
 
-const localDistribuicaoRepository: IDistribuicaoRepository = {
+export function toDistribuicao(row: DistribuicaoRow): Distribuicao {
+  return {
+    id: row.id,
+    leadId: row.leadId,
+    corretorId: row.corretorId,
+    scoreLeadNoMomento: row.scoreLeadNoMomento,
+    scoreCorretorNoMomento: row.scoreCorretorNoMomento,
+    motivoDistribuicao: row.motivoDistribuicao,
+    createdAt: row.createdAt.toISOString(),
+  }
+}
+
+export const distribuicaoRepository: IDistribuicaoRepository = {
   async listar() {
-    return useZelvoStore.getState().distribuicoes
+    const rows = await prisma.distribuicao.findMany({ orderBy: { createdAt: 'desc' } })
+    return rows.map(toDistribuicao)
   },
   async buscarPorLeadId(leadId) {
-    return useZelvoStore.getState().buscarDistribuicaoPorLeadId(leadId)
+    const row = await prisma.distribuicao.findFirst({
+      where: { leadId },
+      orderBy: { createdAt: 'desc' },
+    })
+    return row ? toDistribuicao(row) : undefined
   },
 }
-
-const supabaseDistribuicaoRepository: IDistribuicaoRepository = {
-  async listar() {
-    // Futuro: supabase!.from('distribuicoes').select('*').order('created_at', { ascending: false })
-    throw new Error('Supabase não configurado.')
-  },
-  async buscarPorLeadId(_leadId) {
-    // Futuro: supabase!.from('distribuicoes').select('*').eq('lead_id', leadId).order('created_at', { ascending: false }).limit(1).single()
-    throw new Error('Supabase não configurado.')
-  },
-}
-
-export const distribuicaoRepository: IDistribuicaoRepository = IS_LOCAL_MODE
-  ? localDistribuicaoRepository
-  : supabaseDistribuicaoRepository

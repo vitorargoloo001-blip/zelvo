@@ -11,33 +11,35 @@ import {
   Columns3,
   TrendingUp,
   CalendarClock,
-  ClipboardList,
   Activity,
+  Bell,
 } from 'lucide-react'
 import { ExpandableTabs } from '@/components/ui/expandable-tabs'
 import { useZelvoStore } from '@/stores/zelvoStore'
 
 const TABS_GERENTE = [
-  { title: 'Dashboard',     icon: LayoutDashboard },
-  { title: 'Leads',         icon: UsersRound },
-  { title: 'Novo Lead',     icon: UserPlus },
-  { title: 'Funil',         icon: Columns3 },
+  { title: 'Dashboard',       icon: LayoutDashboard },
+  { title: 'Leads',           icon: UsersRound },
+  { title: 'Novo Lead',       icon: UserPlus },
+  { title: 'Funil',           icon: Columns3 },
   { type: 'separator' as const },
-  { title: 'Corretores',    icon: BriefcaseBusiness },
-  { title: 'Ranking',       icon: Trophy },
-  { title: 'Distribuições', icon: GitBranch },
+  { title: 'Corretores',      icon: BriefcaseBusiness },
+  { title: 'Ranking',         icon: Trophy },
+  { title: 'Distribuições',   icon: GitBranch },
   { type: 'separator' as const },
-  { title: 'Configurações', icon: Settings },
-  { title: 'Diagnóstico',   icon: Activity },
+  { title: 'Notificações',    icon: Bell },
+  { title: 'Configurações',   icon: Settings },
+  { title: 'Diagnóstico',     icon: Activity },
 ]
 
 const TABS_CORRETOR = [
-  { title: 'Meu Painel',      icon: LayoutDashboard },
-  { title: 'Meus Leads',      icon: UsersRound },
-  { title: 'Meu Funil',       icon: Columns3 },
-  { title: 'Próximas Ações',  icon: CalendarClock },
+  { title: 'Meu Painel',        icon: LayoutDashboard },
+  { title: 'Meus Leads',        icon: UsersRound },
+  { title: 'Meu Funil',         icon: Columns3 },
+  { title: 'Próximas Ações',    icon: CalendarClock },
   { type: 'separator' as const },
   { title: 'Minha Performance', icon: TrendingUp },
+  { title: 'Notificações',      icon: Bell },
 ]
 
 export function ZelvoMenu() {
