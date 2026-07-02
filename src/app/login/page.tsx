@@ -1,17 +1,7 @@
 'use client'
 
-import { LoginHero }     from '@/components/login/LoginHero'
-import { LoginFormCard } from '@/components/login/LoginFormCard'
+import { LoginScrollHero } from '@/components/login/LoginScrollHero'
 
 export default function LoginPage() {
-  return (
-    <div
-      id="login-scroll-container"
-      className="w-full h-screen overflow-y-auto"
-      style={{ background: '#1A1E23' }}
-    >
-      <LoginHero />
-      <LoginFormCard />
-    </div>
-  )
+  return <LoginScrollHero />
 }

@@ -1,41 +1,37 @@
 import type { Lead, Corretor, Distribuicao, NivelCorretor } from './types'
-
-const NIVEIS_POR_TEMPERATURA: Record<string, NivelCorretor[]> = {
-  Premium: ['A'],
-  Quente: ['A', 'B'],
-  Morno: ['B', 'C'],
-  Frio: ['C', 'D'],
-}
-
-const MAX_LEADS_EM_ABERTO = 15
+import { DISTRIBUICAO_REGRAS_PADRAO } from './scoreDefaults'
 
 export function distribuirLeadAutomaticamente(
   lead: Lead,
-  corretores: Corretor[]
+  corretores: Corretor[],
+  regras = DISTRIBUICAO_REGRAS_PADRAO,
 ): { corretor: Corretor | null; distribuicao: Omit<Distribuicao, 'id' | 'createdAt'> | null } {
-  const niveisPreferidos = NIVEIS_POR_TEMPERATURA[lead.temperaturaLead] ?? ['C', 'D']
+  const niveisPreferidos = (regras.nivelPorTemperatura[lead.temperaturaLead] ?? ['C', 'D']) as NivelCorretor[]
+  const capacidade = regras.capacidadeMaximaPadrao
 
-  const ativos = corretores.filter((c) => c.ativo)
+  const ativos = corretores.filter((c) => c.ativo && c.participaDistribuicao)
 
-  // Tenta primeiro com o grupo de nível preferido e limite de 15 leads
-  let candidatos = ativos
-    .filter((c) => niveisPreferidos.includes(c.nivel) && c.leadsEmAberto < MAX_LEADS_EM_ABERTO)
-    .sort((a, b) => {
-      if (b.scoreCorretor !== a.scoreCorretor) return b.scoreCorretor - a.scoreCorretor
-      if (a.leadsEmAberto !== b.leadsEmAberto) return a.leadsEmAberto - b.leadsEmAberto
-      if (b.taxaConversao !== a.taxaConversao) return b.taxaConversao - a.taxaConversao
-      return a.tempoMedioAtendimento - b.tempoMedioAtendimento
+  const sort = (list: Corretor[]) =>
+    list.sort((a, b) => {
+      if (regras.considerarMaiorScore && b.scoreCorretor !== a.scoreCorretor) return b.scoreCorretor - a.scoreCorretor
+      if (regras.considerarMenorLeadsAberto && a.leadsEmAberto !== b.leadsEmAberto) return a.leadsEmAberto - b.leadsEmAberto
+      if (regras.considerarMaiorConversao && b.taxaConversao !== a.taxaConversao) return b.taxaConversao - a.taxaConversao
+      if (regras.considerarMenorTempoAtendimento) return a.tempoMedioAtendimento - b.tempoMedioAtendimento
+      return 0
     })
 
-  // Fallback: qualquer ativo, independente do nível ou carga
-  if (candidatos.length === 0) {
-    candidatos = ativos.sort((a, b) => b.scoreCorretor - a.scoreCorretor)
+  // Candidatos dentro do nível preferido e dentro da capacidade individual
+  let candidatos = sort(
+    ativos.filter((c) => niveisPreferidos.includes(c.nivel) && c.leadsEmAberto < (c.capacidadeMaximaLeads ?? capacidade)),
+  )
+
+  // Fallback: qualquer ativo, sem filtro de nível ou carga
+  if (candidatos.length === 0 && regras.permitirFallback) {
+    candidatos = sort(ativos)
   }
 
   const corretor = candidatos[0] ?? null
   if (!corretor) return { corretor: null, distribuicao: null }
-
-  const motivo = gerarMotivo(lead, corretor)
 
   return {
     corretor,
@@ -44,7 +40,7 @@ export function distribuirLeadAutomaticamente(
       corretorId: corretor.id,
       scoreLeadNoMomento: lead.scoreLead,
       scoreCorretorNoMomento: corretor.scoreCorretor,
-      motivoDistribuicao: motivo,
+      motivoDistribuicao: gerarMotivo(lead, corretor),
     },
   }
 }

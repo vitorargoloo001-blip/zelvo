@@ -65,12 +65,82 @@ model Corretor {
   taxaConversao         Float         @default(0)
   tempoMedioAtendimento Int           @default(0)
   ativo                 Boolean       @default(true)
+  capacidadeMaximaLeads Int           @default(15)
+  participaDistribuicao Boolean       @default(true)
+  nivelManual           Boolean       @default(false)
+  observacoes           String?
   createdAt             DateTime      @default(now())
 
   usuarios      Usuario[]
   leads         Lead[]
   distribuicoes Distribuicao[]
   notificacoes  Notificacao[]
+}
+
+model Empresa {
+  id        String   @id @default(cuid())
+  nome      String   @default("Minha Imobiliária")
+  cnpj      String?
+  telefone  String?
+  email     String?
+  site      String?
+  cidade    String?
+  estado    String?
+  segmento  String?
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ScoreConfig {
+  id        String   @id @default(cuid())
+  nome      String   @default("Padrão")
+  ativo     Boolean  @default(true)
+  regras    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DistribuicaoConfig {
+  id        String   @id @default(cuid())
+  ativo     Boolean  @default(true)
+  regras    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FunilConfig {
+  id        String   @id @default(cuid())
+  etapas    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model NotificacaoConfig {
+  id                           String   @id @default(cuid())
+  notificacoesInternasAtivas   Boolean  @default(true)
+  emailNovoLead                Boolean  @default(true)
+  emailLeadPremium             Boolean  @default(true)
+  alertaPremiumParado          Boolean  @default(true)
+  minutosPremiumParado         Int      @default(10)
+  alertaSemProximaAcao         Boolean  @default(true)
+  alertaCorretorSobrecarregado Boolean  @default(true)
+  limiteLeadsEmAberto          Int      @default(15)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+}
+
+model OnboardingStatus {
+  id                      String   @id @default(cuid())
+  empresaConfigurada      Boolean  @default(false)
+  corretoresConfigurados  Boolean  @default(false)
+  usuariosConfigurados    Boolean  @default(false)
+  scoreConfigurado        Boolean  @default(false)
+  distribuicaoConfigurada Boolean  @default(false)
+  testeLeadCriado         Boolean  @default(false)
+  concluido               Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }
 
 model Lead {

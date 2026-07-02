@@ -1,121 +1,165 @@
-# Zelvo MVP
+# Zelvo
 
-Sistema de gestão de leads para imobiliárias. Controle de funil, distribuição de leads por score, painel de corretores e gerentes.
+CRM de gestão de leads para imobiliárias. Distribuição inteligente por score, funil configurável, painel de gerente e corretor, intake externo via API.
 
 ## Stack
 
-- **Next.js** (App Router) — framework principal
-- **TypeScript** — tipagem estrita
-- **Tailwind CSS** — estilização
-- **Zustand** — gerenciamento de estado + localStorage
-- **Supabase** — banco de dados (integração futura)
-- **Vercel** — hospedagem oficial
+| Camada       | Tecnologia                                      |
+|--------------|-------------------------------------------------|
+| Framework    | Next.js 16 — App Router                         |
+| Linguagem    | TypeScript (estrito)                            |
+| Estilos      | Tailwind CSS                                    |
+| Estado       | Zustand (`skipHydration: true`)                 |
+| Banco        | PostgreSQL via Neon + Prisma 7 (`@prisma/adapter-pg`) |
+| Auth         | Auth.js (next-auth beta) — session + JWT        |
+| Email        | Resend                                          |
+| Hospedagem   | Vercel                                          |
 
 ---
 
 ## Rodar localmente
 
 ```bash
-# Instalar dependências
 npm install
 
-# Criar arquivo de variáveis de ambiente
+# Copiar e preencher variáveis de ambiente
 cp .env.example .env.local
 
-# Servidor de desenvolvimento
 npm run dev
 ```
 
 Acesse [http://localhost:3000](http://localhost:3000).
 
-O modo padrão é `local` — funciona sem banco de dados usando Zustand + localStorage.
+Sem `NEXT_PUBLIC_DATA_MODE=db`, o sistema usa Zustand com dados mockados (modo `local`).
 
 ---
 
-## Modo de dados
+## Variáveis de ambiente
 
-| `NEXT_PUBLIC_DATA_MODE` | Fonte de dados         | Quando usar                   |
-|-------------------------|------------------------|-------------------------------|
-| `local` (padrão)        | Zustand + localStorage | Desenvolvimento, demonstração |
-| `supabase`              | Supabase (banco real)  | Produção                      |
+### Obrigatórias em produção
 
-Configure no `.env.local`:
+| Variável | Descrição |
+|----------|-----------|
+| `POSTGRES_PRISMA_URL` | URL pooled do Neon (pgbouncer) — usada em runtime |
+| `POSTGRES_URL_NON_POOLING` | URL direta do Neon — usada pelo Prisma CLI (`db push`) |
+| `NEXTAUTH_SECRET` | Segredo de sessão Auth.js (gere com `openssl rand -base64 32`) |
+| `NEXTAUTH_URL` | URL pública do app (ex: `https://zelvo.vercel.app`) |
+| `NEXT_PUBLIC_DATA_MODE` | `db` para produção, `local` para mock |
+
+### Opcionais / recursos extras
+
+| Variável | Descrição |
+|----------|-----------|
+| `RESEND_API_KEY` | Chave da Resend para envio de emails |
+| `RESEND_FROM_EMAIL` | Endereço remetente (ex: `noreply@suaimobiliaria.com`) |
+| `LEAD_INTAKE_SECRET` | Token Bearer para autenticar POST `/api/leads/intake` |
+| `LEAD_INTAKE_ALLOWED_ORIGINS` | CORS allowlist para o endpoint de intake |
+
+> **Segurança:** `LEAD_INTAKE_SECRET`, `LEAD_INTAKE_ALLOWED_ORIGINS`, `RESEND_API_KEY` e `RESEND_FROM_EMAIL` NUNCA devem ter prefixo `NEXT_PUBLIC_` — são server-side only.
+
+---
+
+## Banco de dados (Neon + Prisma)
+
+### Schema
+
+O schema completo está em `prisma/schema.prisma`.
+
+### Aplicar mudanças
 
 ```bash
-NEXT_PUBLIC_DATA_MODE=local
+# Gerar client Prisma (após alterar schema)
+npx prisma generate
+
+# Aplicar ao banco (usa URL direta, não pooled)
+npx prisma db push
 ```
+
+> O projeto usa `db push` em vez de `migrate dev` porque a `POSTGRES_PRISMA_URL` é pooled (pgbouncer) e não suporta advisory locks. O arquivo `prisma.config.ts` aponta `POSTGRES_URL_NON_POOLING` para o CLI.
+
+### Modelos principais
+
+- `Usuario`, `Corretor` — usuários e corretores com perfil e nível
+- `Lead`, `Distribuicao`, `Atividade` — pipeline de leads
+- `Empresa`, `ScoreConfig`, `DistribuicaoConfig`, `FunilConfig`, `NotificacaoConfig` — configurações singleton
+- `OnboardingStatus` — progresso do onboarding inicial
+- `Notificacao`, `EmailLog`, `PasswordResetToken` — suporte
 
 ---
 
-## Deploy na Vercel
-
-O Zelvo foi projetado para rodar nativamente na Vercel.
-
-**Banco recomendado:** Supabase
-
-### Variáveis de ambiente necessárias
-
-| Variável                        | Descrição                 |
-|---------------------------------|---------------------------|
-| `NEXT_PUBLIC_DATA_MODE`         | `local` ou `supabase`    |
-| `NEXT_PUBLIC_SUPABASE_URL`      | URL do projeto Supabase   |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Chave anônima do Supabase |
-
-> `SUPABASE_SERVICE_ROLE_KEY` **nunca** deve ser exposta no client-side.
-> Use-a apenas em Route Handlers ou Server Actions (variável de servidor, sem prefixo `NEXT_PUBLIC_`).
-
-### Comando de build
+## Build e deploy
 
 ```bash
 npm run build
 ```
 
-### Para ativar Supabase em produção
+O build deve completar sem erros TypeScript e sem warnings de lint. Todos os 59 routes são gerados.
 
-1. Execute `supabase/schema.sql` no SQL Editor do Supabase
-2. Configure as variáveis de ambiente na Vercel
-3. Altere `NEXT_PUBLIC_DATA_MODE=supabase`
-4. Faça um novo deploy
+### Deploy na Vercel
 
-Veja o guia completo em [DEPLOY_VERCEL.md](./DEPLOY_VERCEL.md).
+1. Conecte o repositório na Vercel
+2. Configure as variáveis de ambiente listadas acima
+3. O comando de build padrão (`npm run build`) e o output directory (`.next`) são detectados automaticamente
+4. Configure `NEXTAUTH_URL` com a URL do deploy
 
 ---
 
 ## Perfis de usuário
 
-O MVP usa um sistema de perfis mockados (sem login real):
+| Perfil    | Acesso |
+|-----------|--------|
+| `gerente` | Total: leads, corretores, distribuições, configurações, diagnóstico |
+| `corretor`| Restrito: apenas seus leads e métricas pessoais |
 
-- **Gerente** — acesso completo: leads, funil, corretores, ranking, distribuições, diagnóstico
-- **Corretor** — acesso restrito: apenas seus próprios leads e métricas pessoais
-
-Use o seletor de usuário no topo da tela para alternar entre perfis.
+Login via `/login` com email + senha (Auth.js + bcrypt).
 
 ---
 
 ## Estrutura do projeto
 
 ```
+prisma/
+  schema.prisma       # Modelos e schema do banco
+  config.ts           # Aponta POSTGRES_URL_NON_POOLING para o CLI
+
 src/
-  app/              # Páginas Next.js (App Router)
-  components/       # Componentes reutilizáveis
-  config/           # dataMode.ts — controla fonte de dados
-  data/             # Dados mockados iniciais
-  lib/              # Tipos, access.ts, supabaseClient.ts
-  repositories/     # Abstração de dados (local ou supabase)
-  services/         # Camada de serviços
-  stores/           # zelvoStore.ts (Zustand + localStorage)
-supabase/
-  schema.sql        # Schema completo com RLS
-  seed.sql          # Dados iniciais
+  app/                # Páginas Next.js (App Router)
+    api/              # Route Handlers (server-side)
+      configuracoes/  # empresa, score, distribuicao, funil, notificacoes
+      corretores/     # CRUD + ativar/inativar
+      usuarios/       # CRUD + desativar + reenviar-acesso
+      leads/          # CRUD + intake externo
+      system/health   # Health check + totais
+      onboarding/     # Status de onboarding
+    configuracoes/    # Página de configurações (10 tabs)
+    onboarding/       # Wizard de primeiro uso
+    dashboard/        # Painel principal
+    leads/            # Lista e detalhe de leads
+    corretores/       # Ranking e painel do corretor
+
+  components/
+    configuracoes/    # TabEmpresa, TabUsuarios, TabCorretores, ...
+    ui/               # Componentes reutilizáveis
+
+  lib/
+    types.ts          # Tipos TypeScript do domínio
+    scoreDefaults.ts  # Defaults de score, distribuição e funil
+    distribution.ts   # Algoritmo de distribuição de leads
+    apiAuth.ts        # usuarioAutenticado() — auth server-side
+    prisma.ts         # Singleton do PrismaClient
+
+  repositories/       # Abstração de dados (db ou local/mock)
+  services/           # notificationService, emailService
+  stores/             # zelvoStore.ts (Zustand)
+  data/               # Mock data para modo local
 ```
 
 ---
 
-## Diagnóstico
+## Diagnóstico e saúde
 
-Acesse `/diagnostico` (perfil gerente) para ver:
-- Modo de dados ativo e status da configuração Supabase
-- Ambiente de execução (local vs Vercel)
-- Contadores de leads, corretores, distribuições e atividades
-- Status do localStorage
-- Mapa de pontos de integração com Supabase
+- `/diagnostico` — painel de diagnóstico do intake e integrações (gerente)
+- `/api/system/health` — health check público com totais do banco, presença de secrets e ambiente
+- `/onboarding` — wizard de configuração inicial para novos gerentes
+
+Veja o guia operacional completo em [OPERACAO_ZELVO.md](./OPERACAO_ZELVO.md).

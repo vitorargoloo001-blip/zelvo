@@ -16,6 +16,9 @@ export const corretores: Corretor[] = [
     taxaConversao: 23,
     tempoMedioAtendimento: 12,
     ativo: true,
+    capacidadeMaximaLeads: 15,
+    participaDistribuicao: true,
+    nivelManual: false,
   },
   {
     id: 'c2',
@@ -32,6 +35,9 @@ export const corretores: Corretor[] = [
     taxaConversao: 21,
     tempoMedioAtendimento: 15,
     ativo: true,
+    capacidadeMaximaLeads: 15,
+    participaDistribuicao: true,
+    nivelManual: false,
   },
   {
     id: 'c3',
@@ -48,6 +54,9 @@ export const corretores: Corretor[] = [
     taxaConversao: 19,
     tempoMedioAtendimento: 18,
     ativo: true,
+    capacidadeMaximaLeads: 15,
+    participaDistribuicao: true,
+    nivelManual: false,
   },
   {
     id: 'c4',
@@ -64,6 +73,9 @@ export const corretores: Corretor[] = [
     taxaConversao: 15,
     tempoMedioAtendimento: 24,
     ativo: true,
+    capacidadeMaximaLeads: 15,
+    participaDistribuicao: true,
+    nivelManual: false,
   },
   {
     id: 'c5',
@@ -80,6 +92,9 @@ export const corretores: Corretor[] = [
     taxaConversao: 14,
     tempoMedioAtendimento: 28,
     ativo: true,
+    capacidadeMaximaLeads: 15,
+    participaDistribuicao: true,
+    nivelManual: false,
   },
   {
     id: 'c6',
@@ -96,6 +111,9 @@ export const corretores: Corretor[] = [
     taxaConversao: 9,
     tempoMedioAtendimento: 42,
     ativo: true,
+    capacidadeMaximaLeads: 15,
+    participaDistribuicao: true,
+    nivelManual: false,
   },
   {
     id: 'c7',
@@ -112,6 +130,9 @@ export const corretores: Corretor[] = [
     taxaConversao: 7,
     tempoMedioAtendimento: 50,
     ativo: true,
+    capacidadeMaximaLeads: 15,
+    participaDistribuicao: true,
+    nivelManual: false,
   },
   {
     id: 'c8',
@@ -128,5 +149,8 @@ export const corretores: Corretor[] = [
     taxaConversao: 3,
     tempoMedioAtendimento: 75,
     ativo: true,
+    capacidadeMaximaLeads: 15,
+    participaDistribuicao: true,
+    nivelManual: false,
   },
 ]

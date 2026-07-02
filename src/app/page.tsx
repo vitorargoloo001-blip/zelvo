@@ -5,18 +5,54 @@ import { StatCard } from '@/components/StatCard'
 import { LeadTemperatureBadge } from '@/components/LeadTemperatureBadge'
 import { BrokerLevelBadge } from '@/components/BrokerLevelBadge'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import {
   Users, GitBranch, TrendingUp, Flame, Clock,
   ArrowRight, AlertTriangle, Zap, UserX, Inbox,
   MonitorSmartphone, UserPen, FileInput,
   CalendarClock, MessageCircleWarning, Filter,
+  Settings, UserCheck, Webhook, ChevronRight,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
+import type { OnboardingStatus } from '@/lib/types'
+
+function OnboardingBanner() {
+  const [status, setStatus] = useState<OnboardingStatus | null>(null)
+
+  useEffect(() => {
+    fetch('/api/onboarding').then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.status && !d.status.concluido) setStatus(d.status)
+    }).catch(() => {})
+  }, [])
+
+  if (!status) return null
+
+  const concluidas = [
+    status.empresaConfigurada, status.corretoresConfigurados, status.usuariosConfigurados,
+    status.scoreConfigurado, status.distribuicaoConfigurada, status.testeLeadCriado,
+  ].filter(Boolean).length
+
+  return (
+    <div className="rounded-xl border p-4 flex items-center justify-between gap-4" style={{ background: 'rgba(110,9,51,0.08)', borderColor: 'rgba(110,9,51,0.3)' }}>
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'rgba(110,9,51,0.2)' }}>
+          <Settings size={15} style={{ color: '#6E0933' }} />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-foreground">Complete a configuração inicial do Zelvo</p>
+          <p className="text-xs text-muted-foreground">{concluidas} de 6 etapas concluídas</p>
+        </div>
+      </div>
+      <Link href="/onboarding" className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg text-white whitespace-nowrap shrink-0" style={{ background: '#6E0933' }}>
+        Continuar configuração <ChevronRight size={12} />
+      </Link>
+    </div>
+  )
+}
 
 // Dados de atividade semanal (fixos no MVP — futuramente gerados a partir dos leads)
 const areaData = [
@@ -151,6 +187,9 @@ export default function Dashboard() {
   return (
     <div className="space-y-8 pb-8">
 
+      {/* ── Onboarding banner ── */}
+      <OnboardingBanner />
+
       {/* ── Header ── */}
       <div className="flex items-end justify-between pt-1">
         <div>
@@ -168,6 +207,26 @@ export default function Dashboard() {
           <Zap size={14} />
           Novo Lead
         </Link>
+      </div>
+
+      {/* ── Atalhos rápidos ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+        {[
+          { href: '/leads/novo',          label: 'Novo Lead',       icon: Zap,       cor: '#6E0933' },
+          { href: '/configuracoes?aba=corretores', label: 'Novo Corretor', icon: UserCheck, cor: '#3B82F6' },
+          { href: '/configuracoes?aba=usuarios',   label: 'Novo Usuário',  icon: Users,     cor: '#8B5CF6' },
+          { href: '/configuracoes?aba=intake',     label: 'Ver Intake',    icon: Webhook,   cor: '#10B981' },
+          { href: '/configuracoes?aba=sistema',    label: 'Diagnóstico',   icon: Settings,  cor: '#F59E0B' },
+        ].map(({ href, label, icon: Icon, cor }) => (
+          <Link
+            key={href}
+            href={href}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all hover:opacity-80"
+            style={{ background: `${cor}10`, borderColor: `${cor}22`, color: cor }}
+          >
+            <Icon size={12} /> {label} <ArrowRight size={10} className="ml-auto" />
+          </Link>
+        ))}
       </div>
 
       {/* ── Stat Cards ── */}

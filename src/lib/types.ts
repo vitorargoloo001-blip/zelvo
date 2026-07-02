@@ -78,6 +78,131 @@ export interface Corretor {
   taxaConversao: number
   tempoMedioAtendimento: number
   ativo: boolean
+  capacidadeMaximaLeads: number
+  participaDistribuicao: boolean
+  nivelManual: boolean
+  observacoes?: string
+}
+
+export interface Empresa {
+  id: string
+  nome: string
+  cnpj?: string
+  telefone?: string
+  email?: string
+  site?: string
+  cidade?: string
+  estado?: string
+  segmento?: string
+  logoUrl?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ScoreRegras {
+  rendaMinima: number
+  rendaPontosPositivos: number
+  entradaMinima: number
+  entradaPontosPositivos: number
+  fgtsPontos: number
+  urgenciaPontos: number
+  empreendimentoPontos: number
+  regiaoPontos: number
+  financiamentoPontos: number
+  rendaBaixaLimite: number
+  rendaBaixaPenalidade: number
+  semPrevisaoPenalidade: number
+  regiaoVaziaPenalidade: number
+  temperaturas: {
+    premium: number
+    quente: number
+    morno: number
+  }
+}
+
+export interface ScoreConfig {
+  id: string
+  nome: string
+  ativo: boolean
+  regras: ScoreRegras
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DistribuicaoRegras {
+  nivelPorTemperatura: Record<string, string[]>
+  capacidadeMaximaPadrao: number
+  considerarMenorLeadsAberto: boolean
+  considerarMaiorScore: boolean
+  considerarMaiorConversao: boolean
+  considerarMenorTempoAtendimento: boolean
+  permitirFallback: boolean
+  permitirDistribuicaoManual: boolean
+}
+
+export interface DistribuicaoConfig {
+  id: string
+  ativo: boolean
+  regras: DistribuicaoRegras
+  createdAt: string
+  updatedAt: string
+}
+
+export interface EtapaFunil {
+  id: string
+  nome: string
+  cor: string
+  ordem: number
+  ativa: boolean
+  etapaFinal: boolean
+  contaComoConversao: boolean
+  liberaLeadAberto: boolean
+}
+
+export interface FunilConfig {
+  id: string
+  etapas: EtapaFunil[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificacaoConfig {
+  id: string
+  notificacoesInternasAtivas: boolean
+  emailNovoLead: boolean
+  emailLeadPremium: boolean
+  alertaPremiumParado: boolean
+  minutosPremiumParado: number
+  alertaSemProximaAcao: boolean
+  alertaCorretorSobrecarregado: boolean
+  limiteLeadsEmAberto: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface OnboardingStatus {
+  id: string
+  empresaConfigurada: boolean
+  corretoresConfigurados: boolean
+  usuariosConfigurados: boolean
+  scoreConfigurado: boolean
+  distribuicaoConfigurada: boolean
+  testeLeadCriado: boolean
+  concluido: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UsuarioCompleto {
+  id: string
+  nome: string
+  email: string
+  perfil: PerfilUsuario
+  corretorId?: string
+  corretorNome?: string
+  ativo: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Distribuicao {

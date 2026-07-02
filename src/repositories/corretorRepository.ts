@@ -33,6 +33,10 @@ export function toCorretor(row: CorretorRow): Corretor {
     taxaConversao: row.taxaConversao,
     tempoMedioAtendimento: row.tempoMedioAtendimento,
     ativo: row.ativo,
+    capacidadeMaximaLeads: row.capacidadeMaximaLeads,
+    participaDistribuicao: row.participaDistribuicao,
+    nivelManual: row.nivelManual,
+    observacoes: row.observacoes ?? undefined,
   }
 }
 
